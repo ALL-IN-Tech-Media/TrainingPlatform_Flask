@@ -1,0 +1,20 @@
+version: '3'
+services:
+  app:
+    image: aiflask:latest
+    container_name: aiflask_container
+    ports:
+      - "5000:5000"
+    volumes:
+      - /home/ooin/lzz/AI_train/AIData/Datasets:/home/AIData/Datasets  # 将本地目录挂载到容器的 /data 目录
+      - /home/ooin/lzz/AI_train/AIData/model_factory:/home/AIData/model_factory  # 将本地目录挂载到容器的 /data 目录
+    runtime: nvidia  # 启用 GPU 支持
+    environment:
+      PYTHONPATH: /home/lzz/aiflask
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    command: ["/opt/anaconda3/envs/AIFlask/bin/gunicorn", "--bind", "0.0.0.0:5000", "home.lzz.aiflask.app:app"]
+
