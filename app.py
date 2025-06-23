@@ -23,6 +23,24 @@ ray_manager = RayTaskManage()
 IMAGE_FOLDER = '/Users/liuzizhen/Projects/AIData/'  # 替换为您的图片文件夹路径
 app.config['UPLOAD_FOLDER'] = IMAGE_FOLDER
 
+@app.route('/train_fine_tuning', methods=['POST'])
+def train_fine_tuning():
+    data = request.get_json()
+    training_id = data.get('training_id')
+    user_id = data.get('user_id')
+    dataset_id = data.get('dataset_id')
+    training_type = data.get('training_type')
+    model_name = data.get('model_name')
+    epochs = data.get('epochs')
+    batch_size = data.get('batch_size')
+    max_length = data.get('max_length')
+    
+    # 创建ray任务去训练
+    future = training.remote(training_id, user_id, dataset_id, training_type, model_name, epochs, batch_size, max_length)
+    ray_manager.submit_training_task(training_id, future)
+    ray_manager.tasks[training_id] = future
+    return jsonify({'success': True, 'message': '上传成功'})
+
 @app.route('/train_detect', methods=['POST'])
 def train_model():
     ## 1、从请求中获取参数
