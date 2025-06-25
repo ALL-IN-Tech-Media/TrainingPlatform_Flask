@@ -5,3 +5,5 @@ minio
 ultralytics
 seaborn
 openai
+transformers
+peft
