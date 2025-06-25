@@ -96,7 +96,7 @@ from utils.torch_utils import (
     torch_distributed_zero_first,
 )
 
-from dataset_action import update_database_status, insert_training_epoch_status
+from dataset_action import update_database_status, insert_training_epoch_loss
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv("RANK", -1))
