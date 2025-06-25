@@ -7,7 +7,7 @@ import shutil
 from config import BUCKET_NAME, LOCAL_DATASET_DIR, LOCAL_PRE_MODEL_DIR
 from minio_tools import delete_temp_dir, download_minio_folder
 from concurrent.futures import ThreadPoolExecutor
-from train_api import training
+from train_api import fine_tuning_lora
 from tools import validate_and_update_yaml_fields
 from test import main_test
 from ray_manage import RayTaskManage
@@ -34,12 +34,33 @@ def train_fine_tuning():
     epochs = data.get('epochs')
     batch_size = data.get('batch_size')
     max_length = data.get('max_length')
+    save_epoch = data.get('save_epoch') # 每n轮保存一次模型
+    gpu = data.get('gpu')
+    save_dir = os.path.join(os.path.join(os.path.join(LOCAL_DATASET_DIR, str(user_id)), str(dataset_id)), 'save_models')
+    if training_type == 'total_fine_tuning':
+        print("total_fine_tuning")
+    elif training_type == 'partial_fine_tuning':
+        print("partial_fine_tuning")
+    else:
+        return jsonify({'code': '500', 'message': '任务类型错误', 'data':{}})
+    
+    ## 判断数据集是否存在
+    dataset_path = os.path.join(os.path.join(os.path.join(LOCAL_DATASET_DIR, str(user_id)), str(dataset_id)), 'datasets', "data.json")
+    if not os.path.exists(dataset_path):
+        return jsonify({'code': '500', 'message': '数据集不存在', 'data':{}})
+    
+    ## 判断预训练模型是否存在
+    model_path = os.path.join(LOCAL_PRE_MODEL_DIR, model_name)
+    if not os.path.exists(model_path):
+        return jsonify({'code': '500', 'message': '模型不存在', 'data':{}})
     
     # 创建ray任务去训练
-    future = training.remote(training_id, user_id, dataset_id, training_type, model_name, epochs, batch_size, max_length)
+    future = fine_tuning_lora.remote(training_id, user_id, dataset_path, save_dir, model_path, epochs, batch_size, max_length, save_epoch, gpu)
     ray_manager.submit_training_task(training_id, future)
     ray_manager.tasks[training_id] = future
-    return jsonify({'success': True, 'message': '上传成功'})
+    return jsonify({'code': '200', 'message': '上传成功', 'data':{}})
+
+
 
 @app.route('/train_detect', methods=['POST'])
 def train_model():
