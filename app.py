@@ -7,10 +7,11 @@ import shutil
 from config import BUCKET_NAME, LOCAL_DATASET_DIR, LOCAL_PRE_MODEL_DIR
 from minio_tools import delete_temp_dir, download_minio_folder
 from concurrent.futures import ThreadPoolExecutor
-from train_api import fine_tuning_lora
+from train_api import fine_tuning_lora, fine_tuning_all, estimate_gpu_memory_realistic, fine_tuning_dora
 from tools import validate_and_update_yaml_fields
 from test import main_test
 from ray_manage import RayTaskManage
+import torch
 ray.init(ignore_reinit_error=True)  # 初始化Ray
 
 app = Flask(__name__)
@@ -37,30 +38,40 @@ def train_fine_tuning():
     save_epoch = data.get('save_epoch') # 每n轮保存一次模型
     gpu = data.get('gpu')
     save_dir = os.path.join(os.path.join(os.path.join(LOCAL_DATASET_DIR, str(user_id)), str(dataset_id)), 'save_models')
-    if training_type == 'total_fine_tuning':
-        print("total_fine_tuning")
-    elif training_type == 'partial_fine_tuning':
-        print("partial_fine_tuning")
-    else:
-        return jsonify({'code': '500', 'message': '任务类型错误', 'data':{}})
     
     ## 判断数据集是否存在
     dataset_path = os.path.join(os.path.join(os.path.join(LOCAL_DATASET_DIR, str(user_id)), str(dataset_id)), 'datasets', "data.json")
     if not os.path.exists(dataset_path):
-        return jsonify({'code': '500', 'message': '数据集不存在', 'data':{}})
+        return jsonify({'code': 500, 'message': '数据集不存在', 'data':{}})
     
     ## 判断预训练模型是否存在
     model_path = os.path.join(LOCAL_PRE_MODEL_DIR, model_name)
     if not os.path.exists(model_path):
-        return jsonify({'code': '500', 'message': '模型不存在', 'data':{}})
+        return jsonify({'code': 500, 'message': '模型不存在', 'data':{}})
     
+    ## 计算任务大概所需要的显存
+    model_memory = estimate_gpu_memory_realistic(model_name, training_type, model_path, max_length, batch_size)
+    print(f"模型大概所需要的显存：{model_memory}MB")    
+    free_mem, total_mem = torch.cuda.mem_get_info(gpu[0])
+    print(f"剩余显存: {free_mem / 1024**2:.2f} MB")
+    if (free_mem / 1024**2) < model_memory:
+        return jsonify({'code': 500, 'message': f'显存不足，当前剩余显存：{free_mem / 1024**2:.2f} MB，所需显存：{model_memory:.2f} MB', 'data':{}})
+
     # 创建ray任务去训练
-    future = fine_tuning_lora.remote(training_id, user_id, dataset_path, save_dir, model_path, epochs, batch_size, max_length, save_epoch, gpu)
+    if training_type == 'fine_tuning_all':
+        future = fine_tuning_all.remote(training_id, user_id, dataset_path, save_dir, model_path, epochs, batch_size, max_length, save_epoch, gpu)
+    elif training_type == 'fine_tuning_lora':
+        future = fine_tuning_lora.remote(training_id, user_id, dataset_path, save_dir, model_path, epochs, batch_size, max_length, save_epoch, gpu)
+    elif training_type == 'fine_tuning_dora':
+        future = fine_tuning_dora.remote(training_id, user_id, dataset_path, save_dir, model_path, epochs, batch_size, max_length, save_epoch, gpu)
+    elif training_type == 'fine_tuning_qlora':
+        return jsonify({'code': 500, 'message': 'QLoRA训练暂未支持', 'data':{}})
+        # future = fine_tuning_qlora.remote(training_id, user_id, dataset_path, save_dir, model_path, epochs, batch_size, max_length, save_epoch, gpu)
+    else:
+        return jsonify({'code': 500, 'message': '任务类型错误', 'data':{}})
     ray_manager.submit_training_task(training_id, future)
     ray_manager.tasks[training_id] = future
-    return jsonify({'code': '200', 'message': '上传成功', 'data':{}})
-
-
+    return jsonify({'code': 200, 'message': '上传成功', 'data':{}})
 
 @app.route('/train_detect', methods=['POST'])
 def train_model():
